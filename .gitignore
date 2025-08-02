@@ -1,6 +1,5 @@
 # Build and log directories
 **/build/
-**/install/
 **/log/
 .DS_Store
 # ROS bag files
