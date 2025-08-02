@@ -100,7 +100,7 @@ class PyBulletRobotSimulator(Node):
         self.laser_angle_min = -np.pi / 2.0  
         self.laser_angle_max = np.pi / 2.0   
         self.laser_angle_increment = (self.laser_angle_max - self.laser_angle_min) / self.num_laser_beams
-        self.debug_draw_laser = False
+        self.debug_draw_laser = True
 
         # --- Command velocities from the controller node ---
         self.cmd_linear_vel = 0.0
@@ -110,37 +110,53 @@ class PyBulletRobotSimulator(Node):
         self.sim_timer = self.create_timer(self.time_step, self.simulation_step)
         
     def create_simulation_environment(self):
+        
         """
-        Creates the walls and obstacles in the PyBullet simulation with increased height.
+        Creates the walls and obstacles in the PyBullet simulation.
+        This version includes 4 cylinders and 4 corner boxes.
         """
+        self.get_logger().info("Creating simulation environment with 4 cylinders and 5 boxes...")
         wall_ids = []
         wall_half_length = 10.0 
         wall_height = 1.5 
         wall_thickness = 0.1
         
-        # Create a red box visual and collision shape for the walls
+        # --- Outer Walls ---
         wall_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[wall_half_length, wall_thickness, wall_height])
         wall_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[wall_half_length, wall_thickness, wall_height], rgbaColor=[0.8, 0.2, 0.2, 1])
-        
-        # Top and bottom walls
-        wall_ids.append(p.createMultiBody(baseMass=0, baseCollisionShapeIndex=wall_collision_shape, baseVisualShapeIndex=wall_visual_shape, basePosition=[0, wall_half_length, wall_height]))
-        wall_ids.append(p.createMultiBody(baseMass=0, baseCollisionShapeIndex=wall_collision_shape, baseVisualShapeIndex=wall_visual_shape, basePosition=[0, -wall_half_length, wall_height]))
+        wall_ids.append(p.createMultiBody(0, wall_collision_shape, wall_visual_shape, [0, wall_half_length, wall_height/2.0]))
+        wall_ids.append(p.createMultiBody(0, wall_collision_shape, wall_visual_shape, [0, -wall_half_length, wall_height/2.0]))
 
-        # Create a separate shape for the side walls
         wall_side_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[wall_thickness, wall_half_length, wall_height])
         wall_side_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[wall_thickness, wall_half_length, wall_height], rgbaColor=[0.8, 0.2, 0.2, 1])
-        
-        # Left and right walls
-        wall_ids.append(p.createMultiBody(baseMass=0, baseCollisionShapeIndex=wall_side_collision_shape, baseVisualShapeIndex=wall_side_visual_shape, basePosition=[wall_half_length, 0, wall_height]))
-        wall_ids.append(p.createMultiBody(baseMass=0, baseCollisionShapeIndex=wall_side_collision_shape, baseVisualShapeIndex=wall_side_visual_shape, basePosition=[-wall_half_length, 0, wall_height]))
+        wall_ids.append(p.createMultiBody(0, wall_side_collision_shape, wall_side_visual_shape, [wall_half_length, 0, wall_height/2.0]))
+        wall_ids.append(p.createMultiBody(0, wall_side_collision_shape, wall_side_visual_shape, [-wall_half_length, 0, wall_height/2.0]))
 
-        # Create a green obstacle in the center
-        obs_half_size = 2.0 
-        obs_height = 1.5 
-        obs_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[obs_half_size, obs_half_size, obs_height])
-        obs_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[obs_half_size, obs_half_size, obs_height], rgbaColor=[0.2, 0.8, 0.2, 1])
-        wall_ids.append(p.createMultiBody(baseMass=0, baseCollisionShapeIndex=obs_collision_shape, baseVisualShapeIndex=obs_visual_shape, basePosition=[0, 0, obs_height]))
+        # --- Central Box ---
+        center_box_half_size = 1.0 
+        center_box_height = 1.0
+        center_box_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[center_box_half_size, center_box_half_size, center_box_height/2.0])
+        center_box_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[center_box_half_size, center_box_half_size, center_box_height/2.0], rgbaColor=[0.2, 0.8, 0.2, 1])
+        wall_ids.append(p.createMultiBody(0, center_box_col, center_box_vis, [0, 0, center_box_height/2.0]))
         
+        # --- 4 Cylinders ---
+        cyl_radius = 0.5
+        cyl_vis1 = p.createVisualShape(p.GEOM_CYLINDER, radius=cyl_radius, length=wall_height, rgbaColor=[0.5, 0.5, 0.5, 1])
+        cyl_col1 = p.createCollisionShape(p.GEOM_CYLINDER, radius=cyl_radius, height=wall_height)
+        wall_ids.append(p.createMultiBody(0, cyl_col1, cyl_vis1, [-6, 0, wall_height / 2.0]))
+        wall_ids.append(p.createMultiBody(0, cyl_col1, cyl_vis1, [6, 0, wall_height / 2.0]))
+        wall_ids.append(p.createMultiBody(0, cyl_col1, cyl_vis1, [0, 6, wall_height / 2.0]))
+        wall_ids.append(p.createMultiBody(0, cyl_col1, cyl_vis1, [0, -6, wall_height / 2.0]))
+
+        # --- 4 Corner Boxes ---
+        corner_box_half_size = 0.5
+        corner_box_col = p.createCollisionShape(p.GEOM_BOX, halfExtents=[corner_box_half_size, corner_box_half_size, wall_height/2.0])
+        corner_box_vis = p.createVisualShape(p.GEOM_BOX, halfExtents=[corner_box_half_size, corner_box_half_size, wall_height/2.0], rgbaColor=[0.2, 0.2, 0.8, 1])
+        wall_ids.append(p.createMultiBody(0, corner_box_col, corner_box_vis, [6, 6, wall_height / 2.0]))
+        wall_ids.append(p.createMultiBody(0, corner_box_col, corner_box_vis, [-6, 6, wall_height / 2.0]))
+        wall_ids.append(p.createMultiBody(0, corner_box_col, corner_box_vis, [6, -6, wall_height / 2.0]))
+        wall_ids.append(p.createMultiBody(0, corner_box_col, corner_box_vis, [-6, -6, wall_height / 2.0]))
+
         return wall_ids
 
     def cmd_vel_callback(self, msg):
