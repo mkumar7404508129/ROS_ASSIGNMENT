@@ -2,295 +2,335 @@
 import rclpy
 from rclpy.node import Node
 import numpy as np
-import math
+import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse, Rectangle
+import os
+
+# ROS 2 message types
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import PoseStamped, TransformStamped
-from tf2_ros import TransformBroadcaster
 
-class EKFSLAMNode(Node):
-    """
-    Implements a Feature-based SLAM algorithm using an Extended Kalman Filter.
-    This node subscribes to Odometry and LaserScan data to build and maintain
-    a map of landmarks while simultaneously localizing the robot.
-    """
+# =========================================================================================
+#  PART 1: THE EKF SLAM "BRAIN" (Unchanged)
+# =========================================================================================
+def normalize_angle(angle):
+    """Wrap an angle to the range [-pi, pi]."""
+    return (angle + np.pi) % (2 * np.pi) - np.pi
+
+class EKF_SLAM:
+    def __init__(self, initial_pose, motion_noise_std, meas_noise_std):
+        self.mu = np.array(initial_pose).reshape(3, 1)
+        self.Sigma = np.zeros((3, 3))
+        self.landmark_map = {} # Maps landmark ID to its index in the state vector
+        self.next_landmark_idx = 0
+        self.Q_t = np.diag([meas_noise_std['range']**2, meas_noise_std['bearing']**2])
+        self.R_t_from_odom = np.diag([motion_noise_std['v']**2, motion_noise_std['omega']**2])
+
+    def predict(self, v, omega, dt):
+        theta = self.mu[2, 0]
+        num_landmarks = self.next_landmark_idx
+        N = 3 + 2 * num_landmarks
+
+        motion_update = np.array([
+            [v * dt * np.cos(theta)],
+            [v * dt * np.sin(theta)],
+            [omega * dt]
+        ])
+
+        F = np.block([np.eye(3), np.zeros((3, 2 * num_landmarks))])
+        self.mu = self.mu + F.T @ motion_update
+        self.mu[2] = normalize_angle(self.mu[2])
+
+        G_robot = np.array([
+            [0, 0, -v * dt * np.sin(theta)],
+            [0, 0,  v * dt * np.cos(theta)],
+            [0, 0, 0]
+        ])
+        G = np.eye(N) + F.T @ G_robot @ F
+        
+        R_motion = np.diag([0.1**2, 0.1**2, np.deg2rad(1.0)**2])
+        MotionNoise = F.T @ R_motion @ F
+        self.Sigma = G @ self.Sigma @ G.T + MotionNoise
+
+    def update(self, measurements):
+        if not measurements:
+            return
+
+        rx, ry, rtheta = self.mu[0,0], self.mu[1,0], self.mu[2,0]
+        
+        for lm_id, z_range, z_bearing in measurements:
+            # If this is a brand new landmark, add it to the state
+            if lm_id not in self.landmark_map:
+                self.landmark_map[lm_id] = self.next_landmark_idx
+                self.next_landmark_idx += 1
+                
+                lm_x = rx + z_range * np.cos(z_bearing + rtheta)
+                lm_y = ry + z_range * np.sin(z_bearing + rtheta)
+                self.mu = np.vstack([self.mu, [[lm_x], [lm_y]]])
+
+                old_size = self.Sigma.shape[0]
+                self.Sigma = np.block([
+                    [self.Sigma, np.zeros((old_size, 2))],
+                    [np.zeros((2, old_size)), np.eye(2) * 1e3]
+                ])
+                continue
+
+            # If we have seen this landmark before, run the update
+            lm_idx = self.landmark_map[lm_id]
+            lm_x = self.mu[3 + 2 * lm_idx, 0]
+            lm_y = self.mu[3 + 2 * lm_idx + 1, 0]
+
+            delta = np.array([lm_x - rx, lm_y - ry])
+            q = delta.T @ delta
+            expected_range = np.sqrt(q)
+            expected_bearing = np.arctan2(delta[1], delta[0]) - rtheta
+            
+            z = np.array([[z_range], [z_bearing]])
+            z_hat = np.array([[expected_range], [normalize_angle(expected_bearing)]])
+            
+            Fj = np.zeros((5, self.mu.shape[0]))
+            Fj[:3, :3] = np.eye(3)
+            Fj[3:, 3 + 2 * lm_idx : 3 + 2 * lm_idx + 2] = np.eye(2)
+
+            H_low = np.array([
+                [-np.sqrt(q) * delta[0], -np.sqrt(q) * delta[1], 0, np.sqrt(q) * delta[0], np.sqrt(q) * delta[1]],
+                [delta[1], -delta[0], -q, -delta[1], delta[0]]
+            ]) / q
+            H = H_low @ Fj
+
+            S = H @ self.Sigma @ H.T + self.Q_t
+            K = self.Sigma @ H.T @ np.linalg.inv(S)
+
+            innovation = z - z_hat
+            innovation[1] = normalize_angle(innovation[1])
+            self.mu = self.mu + K @ innovation
+            self.mu[2] = normalize_angle(self.mu[2])
+            
+            I = np.eye(self.mu.shape[0])
+            self.Sigma = (I - K @ H) @ self.Sigma
+
+# =========================================================================================
+#  PART 2: THE CORRECTED ROS 2 NODE
+# =========================================================================================
+class EkfSlamNode(Node):
     def __init__(self):
         super().__init__('ekf_slam_node')
-        self.get_logger().info('EKF SLAM Node has started.')
-
-        # ROS 2 Subscribers
-        self.odom_subscriber = self.create_subscription(
-            Odometry,
-            '/odom',
-            self.odometry_callback,
-            10)
-        self.scan_subscriber = self.create_subscription(
-            LaserScan,
-            '/scan',
-            self.laser_scan_callback,
-            10)
-
-        # ROS 2 Publishers
-        self.pose_publisher = self.create_publisher(PoseStamped, '/slam/pose', 10)
-        self.tf_broadcaster = TransformBroadcaster(self)
-
-        # EKF State and Covariance
-        # State vector: [robot_x, robot_y, robot_yaw, landmark1_x, landmark1_y, ...]
-        self.state_vector = np.zeros(3)  # Initial state: [x, y, yaw]
-        # Initial covariance matrix for robot state
-        self.covariance_matrix = np.eye(3) * 1e-9 
-        self.last_odom_time = self.get_clock().now()
+        self.get_logger().info("EKF SLAM Node with Correct Data Association Started.")
         
-        # Odom and Sensor Noise (tunable parameters)
-        # Process noise covariance for odometry
-        self.odom_noise = np.diag([0.1, 0.1, np.deg2rad(5)]) ** 2
-        # Measurement noise covariance for a single landmark
-        self.laser_noise = np.diag([0.1, np.deg2rad(1)]) ** 2
+        initial_pose = [4.0, 4.0, 0.0]
+        motion_noise = {'v': 0.1, 'omega': 0.1}
+        measurement_noise = {'range': 0.2, 'bearing': 0.1}
+        self.ekf = EKF_SLAM(initial_pose, motion_noise, measurement_noise)
 
-        # Map and Landmark Management
-        # Dictionary to store landmark positions and their indices in the state vector
-        # {landmark_id: {'pos_index': start_index, 'position': [x, y]}}
-        self.landmarks = {}
+        self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         
-        # A timer to publish the corrected pose and transform at a regular interval
-        self.publisher_timer = self.create_timer(0.1, self.publish_slam_data)
+        self.last_odom_time = None
+        self.last_pose = np.array(initial_pose)
+        self.history = {'true_path': [], 'est_path': []}
+        
+        self.step_counter = 0
+        self.plot_update_freq = 30
+        self.output_dir = "slam_output_corrected"
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.get_logger().info(f"Corrected PNG plot updates will be saved in '{self.output_dir}/'")
+        
+        # --- THE CORE FIX: Variables for Data Association ---
+        self.next_landmark_id = 0
+        self.association_threshold = 1.0 # meters
 
-        self.get_logger().info('Waiting for data...')
-
-    def odometry_callback(self, msg):
-        """
-        Callback for new odometry data. Triggers the EKF prediction step.
-        """
+    def odom_callback(self, msg):
         current_time = self.get_clock().now()
+        if self.last_odom_time is None:
+            self.last_odom_time = current_time
+            return
+
         dt = (current_time - self.last_odom_time).nanoseconds / 1e9
+        if dt == 0:
+            return
+            
+        self.step_counter += 1
+        
+        pos = msg.pose.pose.position
+        ori = msg.pose.pose.orientation
+        _, _, yaw = euler_from_quaternion([ori.x, ori.y, ori.z, ori.w])
+        current_pose = np.array([pos.x, pos.y, yaw])
+
+        dx, dy = current_pose[0] - self.last_pose[0], current_pose[1] - self.last_pose[1]
+        dtheta = normalize_angle(current_pose[2] - self.last_pose[2])
+        
+        v = np.sqrt(dx**2 + dy**2) / dt
+        omega = dtheta / dt
+        
+        if self.step_counter % self.plot_update_freq == 0:
+            self.get_logger().info(f"--- Step {self.step_counter}: Running Prediction (v={v:.2f}, w={omega:.2f}) ---")
+        
+        self.ekf.predict(v, omega, dt)
+
         self.last_odom_time = current_time
+        self.last_pose = current_pose
+        self.history['true_path'].append(current_pose)
+        self.history['est_path'].append(self.ekf.mu[:3].flatten().tolist())
 
-        if dt < 0.01:
-            return
-        linear_x = msg.twist.twist.linear.x
-        angular_z = msg.twist.twist.angular.z
+        if self.step_counter % self.plot_update_freq == 0:
+            self.update_and_save_plot()
 
-        self.prediction_step(linear_x, angular_z, dt)
-
-    def laser_scan_callback(self, msg):
-        """
-        Callback for new laser scan data. Triggers the EKF update step.
-        """
-        self.update_step(msg)
-
-    def prediction_step(self, linear_vel, angular_vel, dt):
-        """
-        EKF Prediction Step: Predicts the robot's new state and covariance.
-        """
-        x, y, theta = self.state_vector[0], self.state_vector[1], self.state_vector[2]
+    def scan_callback(self, msg):
+        # 1. Detect features (clusters) from the laser scan
+        detected_features = self.detect_features_from_scan(msg) # Returns list of (range, bearing)
         
-        # Compute the change in robot pose based on a differential drive model
-        if abs(angular_vel) > 1e-6:
-            r = linear_vel / angular_vel
-            d_x = -r * math.sin(theta) + r * math.sin(theta + angular_vel * dt)
-            d_y = r * math.cos(theta) - r * math.cos(theta + angular_vel * dt)
-        else:
-            d_x = linear_vel * dt * math.cos(theta)
-            d_y = linear_vel * dt * math.sin(theta)
-        d_theta = angular_vel * dt
+        # 2. Perform Data Association
+        measurements = self.associate_measurements(detected_features)
         
-        # Predict the new robot state
-        self.state_vector[0] += d_x
-        self.state_vector[1] += d_y
-        self.state_vector[2] += d_theta
+        if measurements:
+            self.get_logger().info(f"Update Step: Matched {len(measurements)} landmarks.")
+            # 3. Perform the EKF update with the correctly associated measurements
+            self.ekf.update(measurements)
 
-        # Normalize yaw angle
-        self.state_vector[2] = math.atan2(math.sin(self.state_vector[2]), math.cos(self.state_vector[2]))
-
-        # --- Covariance Prediction ---
-        # State transition Jacobian (F)
-        # This relates the old state to the new state. It's an identity matrix for landmarks,
-        # but has a non-zero element for the robot's motion.
-        num_states = len(self.state_vector)
-        F = np.eye(num_states)
-        F[0, 2] = -d_y
-        F[1, 2] = d_x
-
-        # Motion noise Jacobian (G)
-        # G is typically a 3x3 matrix relating motion noise to the change in robot pose
-        G = np.zeros((3, 3))
-        G[0, 0] = dt * math.cos(theta)
-        G[1, 1] = dt * math.sin(theta)
-        G[2, 2] = dt
-
-        # Propagate covariance
-        Q = np.zeros_like(self.covariance_matrix)
-        Q[0:3, 0:3] = G @ self.odom_noise @ G.T
-        self.covariance_matrix = F @ self.covariance_matrix @ F.T + Q
-
-    def update_step(self, scan_msg):
-        """
-        EKF Update Step: Corrects the state and covariance using laser scan measurements.
+    def associate_measurements(self, detected_features):
+        """Matches detected features to known landmarks."""
+        measurements = []
+        rx, ry, rtheta = self.ekf.mu[:3, 0]
         
-        You MUST implement the following logic in this method:
-        1.  Feature Extraction: Process `scan_msg` to find features (landmarks).
-            - This is where you can integrate your traditional machine learning technique.
-            - Example: Cluster laser points to identify potential landmarks.
-            - The result should be a list of landmark positions relative to the robot.
-        2.  Data Association: For each detected feature, determine if it's a new or known landmark.
-            - Use a method like the Mahalanobis distance to compare new features with existing landmarks.
-        3.  State and Covariance Update:
-            - If a new landmark is found, use `self.augment_state()` to add it to the state vector and covariance matrix.
-            - If a known landmark is re-observed, calculate the Kalman gain and perform the update.
-        """
-        # TODO: Implement feature extraction and data association here.
+        # Get current map of known landmarks
+        known_landmarks_map = {idx: id for id, idx in self.ekf.landmark_map.items()}
         
-        # A simple placeholder for demonstration
-        features = self.extract_features_from_scan(scan_msg)
-
-        for feature in features:
-            # TODO: Implement your data association logic
-            is_new_landmark, associated_id = self.associate_data(feature)
-
-            if is_new_landmark:
-                # Transform the feature from robot frame to world frame
-                x, y, yaw = self.state_vector[:3]
-                feature_world_pos = self.transform_to_world_frame(feature, x, y, yaw)
-                self.augment_state(feature_world_pos)
+        for r, b in detected_features:
+            # Convert detected feature from robot frame to world frame
+            detected_x = rx + r * np.cos(b + rtheta)
+            detected_y = ry + r * np.sin(b + rtheta)
+            
+            best_dist = float('inf')
+            best_match_id = -1
+            
+            # Find the closest known landmark
+            if self.ekf.mu.shape[0] > 3:
+                landmarks_xy = self.ekf.mu[3:].reshape(-1, 2)
+                distances = np.linalg.norm(landmarks_xy - np.array([detected_x, detected_y]), axis=1)
+                best_dist = np.min(distances)
+                best_match_idx = np.argmin(distances)
+                
+            # If a close match is found, associate with that landmark
+            if best_dist < self.association_threshold:
+                lm_id = known_landmarks_map[best_match_idx]
+                measurements.append([lm_id, r, b])
+            # Otherwise, initialize a new landmark
             else:
-                self.kalman_update(feature, associated_id)
+                lm_id = self.next_landmark_id
+                self.next_landmark_id += 1
+                measurements.append([lm_id, r, b])
+                
+        return measurements
+    
+    def detect_features_from_scan(self, msg):
+        """Returns a list of detected features as (range, bearing) tuples."""
+        features = []
+        ranges = np.array(msg.ranges)
+        cluster = []
+        for i in range(len(ranges)):
+            if msg.range_min < ranges[i] < msg.range_max:
+                if not cluster or abs(ranges[i] - ranges[i-1]) < 0.2:
+                    cluster.append(i)
+                else:
+                    if 2 < len(cluster) < 50: # Filter for reasonable cluster sizes
+                        features.append(self.process_cluster(cluster, msg))
+                    cluster = [i]
+            elif cluster:
+                if 2 < len(cluster) < 50:
+                    features.append(self.process_cluster(cluster, msg))
+                cluster = []
+        if cluster and 2 < len(cluster) < 50:
+             features.append(self.process_cluster(cluster, msg))
+        return [f for f in features if f is not None]
 
-    def extract_features_from_scan(self, scan_msg):
-        """
-        TODO: Implement your feature extraction logic here.
-        
-        This is where you can apply a traditional machine learning technique.
-        For example, a clustering algorithm (like K-means) or a simple classifier
-        could be used to identify points that form a single object.
-        
-        Returns a list of (x, y) feature positions in the robot's local frame.
-        """
-        self.get_logger().info('Extracting features...')
-        return []
+    def process_cluster(self, cluster_indices, msg):
+        """Calculates the center of a cluster and returns (range, bearing)."""
+        avg_range = np.mean([msg.ranges[i] for i in cluster_indices])
+        avg_index = int(np.mean(cluster_indices))
+        avg_bearing = msg.angle_min + avg_index * msg.angle_increment
+        return (avg_range, normalize_angle(avg_bearing))
 
-    def associate_data(self, new_feature):
-        """
-        TODO: Implement your data association logic here.
+    def update_and_save_plot(self):
+        """Creates and saves a plot of the current SLAM state."""
+        filename = os.path.join(self.output_dir, f"slam_progress_{self.step_counter:04d}.png")
+        self.get_logger().info(f"Saving plot to {filename}...")
         
-        Use the Mahalanobis distance to match a new feature with an existing landmark.
+        fig, ax = plt.subplots(figsize=(12, 12))
         
-        Returns:
-            - is_new_landmark (bool): True if the feature is new, False otherwise.
-            - associated_id (int): The ID of the associated landmark if found, None otherwise.
-        """
-        return True, None
+        # --- NEW: Plot the ground truth map from your simulation ---
+        plot_true_map(ax)
+        
+        true_path = np.array(self.history['true_path'])
+        est_path = np.array(self.history['est_path'])
+        
+        ax.plot(true_path[:, 0], true_path[:, 1], 'b-', linewidth=2, label='Real Robot Path (from /odom)')
+        ax.plot(est_path[:, 0], est_path[:, 1], 'r--', linewidth=2, label='Estimated Robot Path (EKF)')
+        
+        if self.ekf.mu.shape[0] > 3:
+            est_landmarks = self.ekf.mu[3:].reshape(-1, 2)
+            ax.scatter(est_landmarks[:, 0], est_landmarks[:, 1], s=120, c='m', marker='P', label='Estimated Landmarks')
+            for i in range(len(self.ekf.landmark_map)):
+                lm_sigma = self.ekf.Sigma[3+2*i:3+2*i+2, 3+2*i:3+2*i+2]
+                eigenvalues, eigenvectors = np.linalg.eigh(lm_sigma)
+                angle = np.degrees(np.arctan2(*eigenvectors[:, 0][::-1]))
+                width, height = 2 * 3 * np.sqrt(np.abs(eigenvalues))
+                ellipse = Ellipse(xy=est_landmarks[i], width=width, height=height, angle=angle, edgecolor='m', fc='None', lw=1.5, ls='--')
+                ax.add_patch(ellipse)
 
-    def augment_state(self, new_landmark_pos):
-        """
-        Augments the state vector and covariance matrix with a new landmark.
-        """
-        num_landmarks = len(self.landmarks)
-        new_landmark_id = num_landmarks
+        ax.set_xlabel("X position (m)")
+        ax.set_ylabel("Y position (m)")
+        ax.set_title(f"EKF SLAM State at Step {self.step_counter}")
+        ax.legend()
+        ax.grid(True)
+        ax.set_aspect('equal', 'box')
+        ax.set_xlim(-12, 12)
+        ax.set_ylim(-12, 12)
+        
+        plt.savefig(filename)
+        plt.close(fig)
 
-        # Store landmark info
-        self.landmarks[new_landmark_id] = {'pos_index': 3 + new_landmark_id * 2}
+def plot_true_map(ax):
+    """Draws the known environment obstacles on the plot."""
+    # Outer Walls
+    ax.add_patch(Rectangle((-10, -10), 20, 0.2, color='k'))
+    ax.add_patch(Rectangle((-10, 9.8), 20, 0.2, color='k'))
+    ax.add_patch(Rectangle((-10, -10), 0.2, 20, color='k'))
+    ax.add_patch(Rectangle((9.8, -10), 0.2, 20, color='k'))
+    
+    # Central Box
+    ax.add_patch(Rectangle((-1, -1), 2, 2, color='k'))
+    
+    # Cylinders
+    ax.add_patch(plt.Circle((-6, 0), 0.5, color='k'))
+    ax.add_patch(plt.Circle((6, 0), 0.5, color='k'))
+    ax.add_patch(plt.Circle((0, 6), 0.5, color='k'))
+    ax.add_patch(plt.Circle((0, -6), 0.5, color='k'))
+    
+    # Corner Boxes
+    ax.add_patch(Rectangle((5.5, 5.5), 1, 1, color='k'))
+    ax.add_patch(Rectangle((-6.5, 5.5), 1, 1, color='k'))
+    ax.add_patch(Rectangle((5.5, -6.5), 1, 1, color='k'))
+    ax.add_patch(Rectangle((-6.5, -6.5), 1, 1, color='k'))
 
-        # Augment the state vector
-        self.state_vector = np.append(self.state_vector, new_landmark_pos)
-        
-        # Augment the covariance matrix
-        num_states = len(self.state_vector)
-        new_cov_matrix = np.zeros((num_states, num_states))
-        old_size = self.covariance_matrix.shape[0]
-        
-        new_cov_matrix[:old_size, :old_size] = self.covariance_matrix
-        
-        # TODO: Fill in the remaining blocks of the new covariance matrix.
-        # This involves calculating the Jacobian of the measurement model and using
-        # the current robot pose and covariance.
-        
-        self.covariance_matrix = new_cov_matrix
-        self.get_logger().info(f'New landmark added. Total landmarks: {len(self.landmarks)}')
-
-    def kalman_update(self, measurement, landmark_id):
-        """
-        TODO: Implement the Kalman update step for an associated landmark.
-        
-        1. Calculate the expected measurement `h(x_k)`
-        2. Compute the measurement Jacobian `H`
-        3. Calculate the Kalman gain `K`
-        4. Update the state vector and covariance matrix
-        """
-        pass
-
-    def publish_slam_data(self):
-        """
-        Publishes the corrected robot pose and the transform from map to odom.
-        """
-        if len(self.state_vector) < 3:
-            return
-
-        # Publish the corrected robot pose in the 'map' frame
-        pose_msg = PoseStamped()
-        pose_msg.header.stamp = self.get_clock().now().to_msg()
-        pose_msg.header.frame_id = 'map'
-        pose_msg.pose.position.x = self.state_vector[0]
-        pose_msg.pose.position.y = self.state_vector[1]
-        
-        quat = self.get_quaternion_from_yaw(self.state_vector[2])
-        pose_msg.pose.orientation.x = quat[0]
-        pose_msg.pose.orientation.y = quat[1]
-        pose_msg.pose.orientation.z = quat[2]
-        pose_msg.pose.orientation.w = quat[3]
-        self.pose_publisher.publish(pose_msg)
-        
-        # Publish the transform from 'map' to 'base_link'
-        t = TransformStamped()
-        t.header.stamp = self.get_clock().now().to_msg()
-        t.header.frame_id = 'map'
-        t.child_frame_id = 'base_link'
-        t.transform.translation.x = self.state_vector[0]
-        t.transform.translation.y = self.state_vector[1]
-        t.transform.translation.z = 0.0
-        t.transform.rotation.x = quat[0]
-        t.transform.rotation.y = quat[1]
-        t.transform.rotation.z = quat[2]
-        t.transform.rotation.w = quat[3]
-        self.tf_broadcaster.sendTransform(t)
-
-    def get_quaternion_from_yaw(self, yaw):
-        """Helper to convert yaw angle to a quaternion."""
-        cy = math.cos(yaw * 0.5)
-        sy = math.sin(yaw * 0.5)
-        cp = math.cos(0)
-        sp = math.sin(0)
-        cr = math.cos(0)
-        sr = math.sin(0)
-        
-        x = sr * cp * cy - cr * sp * sy
-        y = cr * sp * cy + sr * cp * sy
-        z = cr * cp * sy - sr * sp * cy
-        w = cr * cp * cy + sr * sp * sy
-        
-        return [x, y, z, w]
-        
-    def transform_to_world_frame(self, pos_robot_frame, x_robot, y_robot, yaw_robot):
-        """Helper function to transform a point from robot to world frame."""
-        px_robot, py_robot = pos_robot_frame
-        
-        cos_yaw = math.cos(yaw_robot)
-        sin_yaw = math.sin(yaw_robot)
-
-        px_world = x_robot + px_robot * cos_yaw - py_robot * sin_yaw
-        py_world = y_robot + px_robot * sin_yaw + py_robot * cos_yaw
-
-        return np.array([px_world, py_world])
+def euler_from_quaternion(q_list):
+    x, y, z, w = q_list
+    t0, t1 = +2.0 * (w * x + y * z), +1.0 - 2.0 * (x * x + y * y)
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else (-1.0 if t2 < -1.0 else t2)
+    t3, t4 = +2.0 * (w * z + x * y), +1.0 - 2.0 * (y * y + z * z)
+    return np.arctan2(t0, t1), np.arcsin(t2), np.arctan2(t3, t4)
 
 def main(args=None):
     rclpy.init(args=args)
-    node = EKFSLAMNode()
+    node = EkfSlamNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
     finally:
+        node.get_logger().info("Shutting down EKF SLAM node.")
         node.destroy_node()
         rclpy.shutdown()
-
+        
 if __name__ == '__main__':
     main()
