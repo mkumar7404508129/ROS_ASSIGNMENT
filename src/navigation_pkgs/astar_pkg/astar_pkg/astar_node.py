@@ -23,7 +23,6 @@ def a_star_search(grid, start, end):
     open_list, closed_set = [], set()
     heapq.heappush(open_list, start_node)
     
-    # Track explored nodes for visualization
     explored_path = []
 
     while open_list:
@@ -42,9 +41,8 @@ def a_star_search(grid, start, end):
         for new_position in [(0, 1), (0, -1), (1, 0), (-1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)]:
             node_position = (current_node.position[0] + new_position[0], current_node.position[1] + new_position[1])
             
-            # Check bounds and if it's an obstacle or already explored
             if not (0 <= node_position[0] < len(grid) and 0 <= node_position[1] < len(grid[0])) \
-               or grid[node_position[0]][node_position[1]] > 50 or node_position in closed_set: # Use > 50 for OccupancyGrid
+               or grid[node_position[0]][node_position[1]] > 50 or node_position in closed_set:
                 continue
 
             new_node = AStarNode(current_node, node_position)
@@ -65,14 +63,14 @@ class AStarPlannerAndControllerNode(Node):
         super().__init__('a_star_planner_and_controller_node')
         self.get_logger().info("A* Planner & Controller Node has started.")
 
-        # --- Parameters (tuned for the simulation environment) ---
-        self.declare_parameter('start_point', [4.0, 4.0]) # Matches robot start position
-        self.declare_parameter('goal_point', [-8.0, -8.0]) # A challenging goal
-        self.declare_parameter('lookahead_distance', 0.8)
+        # --- Parameters ---
+        self.declare_parameter('start_point', [4.0, 4.0])
+        self.declare_parameter('goal_point', [-8.0, -8.0])
+        self.declare_parameter('lookahead_distance', 0.8) 
         self.declare_parameter('goal_tolerance', 0.25)
         self.declare_parameter('max_linear_speed', 0.5)
-        self.declare_parameter('max_angular_speed', 1.0)
-        self.declare_parameter('kp_angular', 2.0)
+        self.declare_parameter('max_angular_speed', 1.2) # Increased slightly
+        self.declare_parameter('kp_angular', 2.5)       # Increased slightly
 
         # --- State Variables ---
         self.map_info, self.grid = None, None
@@ -111,17 +109,18 @@ class AStarPlannerAndControllerNode(Node):
 
         path_grid, explored_grid = a_star_search(self.grid, start_grid, goal_grid)
 
+        # Plot the graph regardless of whether a path was found
+        self.plot_graph(start_grid, goal_grid, path_grid, explored_grid)
+
         if path_grid:
             self.get_logger().info("Path found. Preparing to execute.")
             self.path_to_follow = [self.grid_to_world(p) for p in path_grid]
             self.publish_path_viz(self.path_to_follow)
-            self.plot_graph(start_grid, goal_grid, path_grid, explored_grid)
             
             self.controller_timer = self.create_timer(0.1, self.control_loop)
             self.get_logger().info("Controller started.")
         else:
             self.get_logger().error("No path could be found! Cannot move the robot.")
-            self.plot_graph(start_grid, goal_grid, None, explored_grid)
 
     def control_loop(self):
         if self.path_to_follow is None or self.current_pose is None or self.current_yaw is None:
@@ -129,39 +128,54 @@ class AStarPlannerAndControllerNode(Node):
 
         robot_pos = np.array([self.current_pose.x, self.current_pose.y])
         path_points = np.array(self.path_to_follow)
-        lookahead_dist = self.get_parameter('lookahead_distance').value
         
+        # --- 1. FIND THE CLOSEST POINT ON THE PATH (ROBUST METHOD) ---
+        # Find the closest point on the path from our current lookahead index onwards.
+        # This prevents the robot from getting stuck on parts of the path it has already passed.
+        distances = np.linalg.norm(path_points[self.path_index:] - robot_pos, axis=1)
+        # The index of the closest point relative to the sliced path
+        relative_closest_index = np.argmin(distances)
+        # The true index in the full path
+        self.path_index += relative_closest_index
+
+        # --- 2. FIND THE LOOKAHEAD POINT ---
+        # Starting from the now-updated closest point, find a point that is 'lookahead_distance' away.
+        lookahead_dist = self.get_parameter('lookahead_distance').value
         target_index = self.path_index
         while target_index < len(path_points) - 1:
             dist_to_target = np.linalg.norm(path_points[target_index] - robot_pos)
             if dist_to_target >= lookahead_dist:
                 break
             target_index += 1
-        
-        self.path_index = target_index
         target_pos = path_points[target_index]
-
+        
+        # --- 3. CHECK FOR GOAL ARRIVAL ---
         dist_to_final_goal = np.linalg.norm(path_points[-1] - robot_pos)
         if dist_to_final_goal < self.get_parameter('goal_tolerance').value:
             self.get_logger().info("Goal Reached!")
             self.stop_robot()
             self.controller_timer.cancel()
-            self.destroy_node()
-            rclpy.shutdown()
             return
 
-        kp_angular = self.get_parameter('kp_angular').value
-        max_linear = self.get_parameter('max_linear_speed').value
-        max_angular = self.get_parameter('max_angular_speed').value
-
+        # --- 4. CALCULATE HEADING ERROR (Angle Math is Unchanged) ---
         angle_to_target = math.atan2(target_pos[1] - self.current_pose.y, target_pos[0] - self.current_pose.x)
         heading_error = angle_to_target - self.current_yaw
         if heading_error > math.pi: heading_error -= 2 * math.pi
         if heading_error < -math.pi: heading_error += 2 * math.pi
 
-        angular_vel = kp_angular * heading_error
-        linear_vel = max_linear
+        # --- 5. CALCULATE VELOCITIES (WITH ADAPTIVE SPEED) ---
+        kp_angular = self.get_parameter('kp_angular').value
+        max_linear = self.get_parameter('max_linear_speed').value
+        max_angular = self.get_parameter('max_angular_speed').value
 
+        angular_vel = kp_angular * heading_error
+
+        # Slow down for sharp turns to improve accuracy.
+        # When the heading error is large, the linear velocity is reduced.
+        scaling_factor = max(0.3, 1.0 - 0.9 * abs(heading_error) / (math.pi/2))
+        linear_vel = max_linear * scaling_factor
+
+        # --- 6. PUBLISH COMMANDS ---
         twist_msg = Twist()
         twist_msg.linear.x = linear_vel
         twist_msg.angular.z = max(-max_angular, min(max_angular, angular_vel))
@@ -186,39 +200,45 @@ class AStarPlannerAndControllerNode(Node):
             pose_stamped = PoseStamped()
             pose_stamped.header = path_msg.header
             pose_stamped.pose.position.x, pose_stamped.pose.position.y = point[0], point[1]
+            pose_stamped.pose.orientation.w = 1.0 
             path_msg.poses.append(pose_stamped)
         self.path_publisher.publish(path_msg)
 
     def plot_graph(self, start, end, path, explored_path):
-        fig, ax = plt.subplots(figsize=(10, 10))
-        # Use a proper colormap for occupancy grids
+        fig, ax = plt.subplots(figsize=(12, 12))
+        ax.set_title("A* Global Plan")
+        ax.set_xlabel("X (meters)")
+        ax.set_ylabel("Y (meters)")
+        
         ax.imshow(self.grid, cmap='gray_r', interpolation='none', origin='lower', 
                   extent=[self.map_info.origin.position.x, 
                           self.map_info.origin.position.x + self.map_info.width * self.map_info.resolution,
                           self.map_info.origin.position.y,
                           self.map_info.origin.position.y + self.map_info.height * self.map_info.resolution])
 
-        # Convert grid coordinates back to world coordinates for plotting
         def plot_grid_points(points, color, alpha, size, label):
             if not points: return
             world_points = np.array([self.grid_to_world(p) for p in points])
             ax.scatter(world_points[:, 0], world_points[:, 1], c=color, alpha=alpha, s=size, label=label)
 
         plot_grid_points(explored_path, 'yellow', 0.2, 10, 'Explored Cells')
+        
         if path:
             path_world = [self.grid_to_world(p) for p in path]
             path_x, path_y = zip(*path_world)
             ax.plot(path_x, path_y, color='blue', linewidth=2, marker='o', markersize=3, label='Final Path')
 
         start_w, end_w = self.grid_to_world(start), self.grid_to_world(end)
-        ax.plot(start_w[0], start_w[1], 'go', markersize=10, label='Start')
-        ax.plot(end_w[0], end_w[1], 'ro', markersize=10, label='Goal')
-        ax.set_title("A* Global Plan"), ax.legend(), ax.set_xlabel("X (meters)"), ax.set_ylabel("Y (meters)")
+        
+        ax.plot(start_w[0], start_w[1], 'go', markersize=12, label='Start', markeredgecolor='k')
+        ax.plot(end_w[0], end_w[1], 'ro', markersize=12, label='Goal', markeredgecolor='k')
+
+        ax.legend()
         ax.grid(True)
         file_name = "path_plan.png"
         plt.savefig(file_name)
         plt.close(fig)
-        self.get_logger().info(f"Plot saved to {file_name}")
+        self.get_logger().info(f"Plot saved to '{file_name}'")
 
 
 def main(args=None):
@@ -226,10 +246,10 @@ def main(args=None):
     node = AStarPlannerAndControllerNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
         pass
     finally:
-        if rclpy.ok():
+        if rclpy.ok() and node.executor is not None and not node.executor.shutdown_called:
             node.stop_robot()
             node.destroy_node()
             rclpy.shutdown()
