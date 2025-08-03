@@ -100,7 +100,7 @@ class PyBulletRobotSimulator(Node):
         self.laser_angle_min = -np.pi / 2.0  
         self.laser_angle_max = np.pi / 2.0   
         self.laser_angle_increment = (self.laser_angle_max - self.laser_angle_min) / self.num_laser_beams
-        self.debug_draw_laser = True
+        self.debug_draw_laser = False
 
         # --- Command velocities from the controller node ---
         self.cmd_linear_vel = 0.0
