@@ -1,129 +1,167 @@
-# ROS Navigation and Simulation Project
+#  ROS2-Based Mobile Robot Navigation & Mapping System (Humble + PyBullet)
 
-This repository contains a collection of ROS packages for robot navigation, SLAM (Simultaneous Localization and Mapping), and simulation. The project uses PyBullet for simulation and implements several popular navigation and localization algorithms.
+This repository contains a modular robotics framework using **ROS 2 Humble**, with simulation in **PyBullet**, and visualizations via **RViz2**. It supports:
 
-## 📖 Table of Contents
-- [Project Overview](#-project-overview)
-- [Prerequisites](#-prerequisites)
-- [Setup & Installation](#-setup--installation)
-- [Usage](#-usage)
-- [A Note on .gitignore](#-a-note-on-gitignore)
+- ML-enhanced A* global path planning
+- Monte Carlo Localization (MCL)
+- EKF SLAM with feature-based landmark tracking
+- Real-time visualization of paths, particles, landmarks
+- Fully based on `colcon build` (no Catkin)
 
-## 🚀 Project Overview
+---
 
-This ROS workspace is designed to simulate a robot in a PyBullet environment and test various navigation and localization algorithms.
 
-### Key Packages
+## Project Directory Structure
+ROS_ASSIGNMENT-NK_CODE/
+├── install/
+│
+├── pybullet/                         # (Optional/Empty)
+│
+├── src/
+│   ├── navigation_pkgs/
+│   │   ├── astar_ml_pkg/            # ML-powered A* path planner
+│   │   ├── astar_pkg/               # Classical A* path planner
+│   │   ├── EKF_SLAM_pkg/            # Extended Kalman Filter SLAM
+│   │   └── mcl_pkg/                 # Monte Carlo Localization (MCL)
+│   │
+│   └── simulation_pkgs/
+│       └── pybullet_sim_pkg/       # PyBullet simulation environment
+│           ├── pybullet_sim_pkg/   # Python module folder (ROS 2 Python pkg format)
+│           ├── resource/
+│           ├── test/
+│           ├── package.xml
+│           ├── setup.cfg
+│           └── setup.py
+│
+├── .gitignore
+├── ploter.py                        # (Possibly plotting util script)
+├── readme.md
+├── rosgraph.png                     # Network diagram or system arch
 
-- **pybullet_sim_pkg**: Contains the PyBullet simulation environment, including the robot model and nodes to control its motion.
-- **astar_pkg / astar_ml_pkg**: Implements the A* pathfinding algorithm.
-- **EKF_SLAM_pkg**: An implementation of Simultaneous Localization and Mapping using an Extended Kalman Filter.
-- **MCL_pkg**: An implementation of Monte Carlo Localization (also known as a particle filter) for tracking the robot's pose.
 
-## ✅ Prerequisites
+## Package Overview
 
-Before you begin, ensure you have the following installed on your system:
+| Package | Description |
+|--------|-------------|
+| `astar_planner` | Hybrid A* planner with machine learning (GradientBoostingRegressor) to enhance heuristic |
+| `train_model` | Trains the ML heuristic model by sampling A* paths across the map |
+| `mcl_node` | Monte Carlo Localization with sensor fusion using laser and odometry |
+| `ekf_slam` | EKF-SLAM with landmark extraction from LaserScan and RViz2 visualization |
+| `pybullet_sim` | (Optional) For PyBullet-based simulation of environment and robot dynamics |
 
-- **ROS**: (e.g., ROS Noetic or ROS 2 Foxy). These instructions assume a Catkin workspace (ROS 1).
-- **Python 3** and pip.
-- **PyBullet**: The physics simulator.
+---
+
+## Setup Instructions
+
+### 1. Create ROS 2 Workspace (Colcon)
 
 ```bash
-pip install pybullet
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws
 ```
 
-- **Git**: For cloning the repository.
+### 2. Clone the Repository
 
-## 🛠️ Setup & Installation
+cd ~/ros2_ws/src
+git clone https://github.com/mkumar7404508129/ROS_ASSIGNMENT.git
 
-To set up this project on a new machine after cloning, follow these steps. This process will create a new ROS workspace, clone the project into it, install dependencies, and build the packages.
-
-### Create a new Catkin Workspace:
-
-```bash
-mkdir -p ~/ros_ws/src
-cd ~/ros_ws/
-catkin_make
-```
-
-### Clone the Repository:
-
-Navigate to the `src` directory of your new workspace and clone this repository.
-
-```bash
-cd ~/ros_ws/src
-git clone <your-repository-url-here> .
-```
-
-> Replace `<your-repository-url-here>` with your actual Git repository URL. The `.` at the end clones it directly into the `src` folder.
-
-### Install Dependencies:
-
-Use `rosdep` to install any package dependencies listed in the `package.xml` files.
-
-```bash
-cd ~/ros_ws
+### 3. Install Dependencies
+sudo apt update
+rosdep update
+cd ~/ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
-```
 
-### Build the Workspace:
+### 4. Build Workspace
+cd ~/ros2_ws
+colcon build
 
-Use `catkin_make` (for ROS 1) or `colcon build` (for ROS 2) to compile all the packages.
+### 5. Source the Workspace
+source ~/ros2_ws/install/setup.bash
 
-```bash
-cd ~/ros_ws
-catkin_make
-```
+---
 
-### Source the Workspace:
+###  Run Commands for Each Component (ROS 2 + colcon)
 
-Finally, source the `setup.bash` file to add this workspace's packages to your ROS environment.
+> Use in a **new terminal tab** for each component. Don’t forget to `source` the workspace every time.
 
-```bash
-source ~/ros_ws/devel/setup.bash
-```
+> These assume your workspace root is `~/ros2_ws` and all packages are in `src/navigation_pkgs/` or `src/simulation_pkgs/`.
 
-> Tip: Add this command to your `~/.bashrc` file to automatically source it every time you open a new terminal.
+---
 
-## ▶️ Usage
-
-To run the simulation and navigation, you will typically launch one or more nodes.
-
-### Launch the Simulator:
+### 1. Train ML Model for A\*
 
 ```bash
-rosrun pybullet_sim_pkg robot_simulator_node.py
+cd ~/ros2_ws
+colcon build --packages-select astar_ml_pkg
+source install/setup.bash
+ros2 run astar_ml_pkg train_model
 ```
 
-### Run a Navigation/Localization Node:
+---
 
-In a new terminal, run one of the algorithm nodes (remember to source your workspace first!).
+### 2. ML-Powered A\* Path Planner
 
 ```bash
-# Example for EKF SLAM
-rosrun EKF_SLAM_pkg ekf_slam_node
-
-# Example for MCL
-rosrun MCL_pkg mcl_node
+cd ~/ros2_ws
+colcon build --packages-select astar_ml_pkg
+source install/setup.bash
+ros2 run astar_ml_pkg astar_ml_node
 ```
 
-> Note: The exact node names and launch files might differ. Update as needed.
+---
 
-## 📝 A Note on .gitignore
+### 3. Classic A\* Planner
 
-The `.gitignore` file is crucial for keeping your repository clean and efficient. It tells Git which files and directories it should not track.
-
-### Here’s a breakdown of the rules you've included:
-
-- `**/build/`, `**/install/`, `**/log/`: These directories are generated automatically when you build your ROS workspace (`catkin_make`). They contain compiled code, executables, and log files. They don't need to be version-controlled because they can be regenerated from the source code at any time. Including them would bloat the repository with unnecessary files.
-- `.DS_Store`: This is a metadata file created automatically by macOS. It's specific to a user's machine and has no value to other collaborators.
-- `*.bag`, `*.db3`: These are ROS bag files, which are used to record and play back ROS message data. They can become very large and are typically not stored in a Git repository.
-- `*.png`: You've added this to ignore PNG files. While you might want to track some images (like the `rosgraph.png`), this rule prevents accidental check-ins of other images, like maps generated during a SLAM run.
-
-If you want to keep `rosgraph.png`, you can add an exception to your `.gitignore` file like this:
-
-```gitignore
-!rosgraph.png
+```bash
+cd ~/ros2_ws
+colcon build --packages-select astar_pkg
+source install/setup.bash
+ros2 run astar_pkg astar
 ```
 
-By ignoring these files, you ensure that anyone who clones your repository gets only the essential source code needed to build and run the project.
+---
+
+### 4. Monte Carlo Localization (MCL)
+
+```bash
+cd ~/ros2_ws
+colcon build --packages-select mcl_pkg
+source install/setup.bash
+ros2 run mcl_pkg mcl_node
+```
+
+> To publish the map (if needed):
+
+```bash
+ros2 run mcl_pkg map_publisher
+```
+
+---
+
+### 5. EKF SLAM
+
+```bash
+cd ~/ros2_ws
+colcon build --packages-select EKF_SLAM_pkg
+source install/setup.bash
+ros2 run EKF_SLAM_pkg ekf_slam
+```
+
+---
+
+### 6. PyBullet Simulation – Robot Simulator
+
+```bash
+cd ~/ros2_ws
+colcon build --packages-select pybullet_sim_pkg
+source install/setup.bash
+ros2 run pybullet_sim_pkg robot_simulator_node
+```
+
+> For rectangular motion test:
+
+```bash
+ros2 run pybullet_sim_pkg rectangular_motion_node
+```
+
+
