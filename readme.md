@@ -12,6 +12,7 @@ This repository contains a modular robotics framework using **ROS 2 Humble**, wi
 
 
 ## Project Directory Structure
+```
 ROS_ASSIGNMENT-NK_CODE/
 ├── install/
 │
@@ -37,7 +38,7 @@ ROS_ASSIGNMENT-NK_CODE/
 ├── ploter.py                        # (Possibly plotting util script)
 ├── readme.md
 ├── rosgraph.png                     # Network diagram or system arch
-
+```
 
 ## Package Overview
 
