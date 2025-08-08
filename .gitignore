@@ -2,7 +2,10 @@
 **/build/
 **/install/
 **/log/
+mcl_output/
+slam_output_corrected/
 .DS_Store
 # ROS bag files
 *.bag
 *.db3
+
