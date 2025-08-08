@@ -45,7 +45,7 @@ class AStarPlannerAndControllerNode(Node):
 
         # --- Load the trained ML model ---
         self.ml_model = None
-        model_filename = 'heuristic_model.pkl'
+        model_filename = 'src/navigation_pkgs/astar_ml_pkg/astar_ml_pkg/heuristic_model.pkl'
         try:
             with open(model_filename, 'rb') as file:
                 self.ml_model = pickle.load(file)
