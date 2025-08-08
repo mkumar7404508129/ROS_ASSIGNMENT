@@ -8,7 +8,7 @@ The project is divided into two primary nodes:
 
 ---
 
-## 🤖 System Architecture
+## System Architecture
 
 The workflow is a two-stage process:
 
@@ -27,7 +27,7 @@ This node's sole purpose is to create the ML heuristic model. It is designed to 
 ### Core Functionality
 
 * **Data Generation**: Subscribes to the `/map` topic. Once the map is received, it identifies all non-obstacle cells and generates thousands of random start/goal pairs.
-* **Parallel Processing**: To speed up data generation, it uses Python's `multiprocessing.Pool` to distribute the A* search tasks across all available CPU cores, providing a significant performance boost. A `tqdm` progress bar shows the status.
+* **Parallel Processing**: To speed up data generation, it uses Python's `multiprocessing.Pool` to distribute the A*(with Manhattan distance) search tasks across all available CPU cores, providing a significant performance boost. A `tqdm` progress bar shows the status.
 * **Model Training**: It trains a `sklearn.ensemble.GradientBoostingRegressor` model on the generated data (`X`: start/goal coordinates, `y`: true path cost).
 * **Evaluation & Output**: After training, it evaluates the model's performance on a test set, prints the Mean Absolute Error (MAE) and R-squared (R2) score, and saves the results to a plot.
 
@@ -84,7 +84,7 @@ This is the main operational node. It performs the path planning and execution u
 
 ---
 
-## 🚀 How to Build and Run
+## How to Build and Run
 
 Follow this three-step process to run the full system.
 

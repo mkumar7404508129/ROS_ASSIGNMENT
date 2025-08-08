@@ -8,7 +8,7 @@ The node performs two main functions:
 
 ---
 
-## 🤖 System Architecture
+## System Architecture
 
 The `astar_node` integrates with a simulation environment to perform its tasks. It subscribes to map and odometry data and publishes velocity commands and the final path for visualization.
 
@@ -49,7 +49,7 @@ This single, powerful node handles all aspects of planning and execution. It is 
 
 ---
 
-## 🚀 How to Build and Run
+## How to Build and Run
 
 Follow these steps to launch the A* planner.
 

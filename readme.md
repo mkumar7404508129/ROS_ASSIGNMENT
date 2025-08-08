@@ -43,7 +43,7 @@ ROS_ASSIGNMENT-NK_CODE/
 
 ---
 
-## 📦 Package Overview
+## Package Overview
 
 This repository is organized into several ROS 2 packages, each with a specific role. For detailed information, follow the link to the package's dedicated `README.md`.
 

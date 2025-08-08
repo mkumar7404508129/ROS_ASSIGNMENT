@@ -6,7 +6,7 @@ The package is highly optimized, using vectorized NumPy operations for performan
 
 ---
 
-## 🤖 System Architecture
+## System Architecture
 
 The `mcl_node` is the central component of this system. It subscribes to the `/odom` and `/scan` topics from the simulator and uses this information to maintain a distribution of weighted particles. It then publishes the localization results to various topics for visualization and use by other nodes, such as a planner.
 
@@ -57,7 +57,7 @@ The images show the particle cloud (cyan dots) converging from a dispersed state
 
 ---
 
-## 🚀 How to Build, Run, and Visualize
+## How to Build, Run, and Visualize
 
 Follow these steps to launch the MCL localization system.
 

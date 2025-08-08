@@ -6,7 +6,7 @@ A key feature of this package is its real-time visualization capability. The nod
 
 ---
 
-## 🤖 System Architecture
+## System Architecture
 
 The `ekf_slam_node` acts as the core processing unit. It subscribes to a simulation environment that provides odometry and sensor data, and in turn, publishes the estimated state for visualization and further use.
 
@@ -49,7 +49,7 @@ This is the single, all-in-one node that performs the entire SLAM process.
 
 ---
 
-## 🚀 How to Build, Run, and Visualize
+## How to Build, Run, and Visualize
 
 Follow these steps to launch the EKF SLAM system.
 
