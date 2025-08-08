@@ -1,8 +1,8 @@
-### MCL Demo [![MCL Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1DZikycVrDv5St1zge4WKLWvAyWtqwO-R/view?usp=sharing)
+### MCL Demo [![MCL Demo](./resorce/videos/mcl.png)](https://drive.google.com/file/d/1DZikycVrDv5St1zge4WKLWvAyWtqwO-R/view?usp=sharing)
 
 ### EKF SLAM Demo [![EKF SLAM Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1ke0XbPN9iWjfp6sSuiCP1XfcCbZm8_nX/view?usp=sharing) 
-### A* Demo [![A* Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1gBN-PhuQQ6OgJll4vY_ddOACH-6zBuhP/view?usp=sharing)
-### A* ML Demo  [![A* ML Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1jGSJrqjMciINH5OiUwlpMRe6pR6Z1EJd/view?usp=sharing)
+### A* Demo [![A* Demo](./resorce/videos/A*.png)](https://drive.google.com/file/d/1gBN-PhuQQ6OgJll4vY_ddOACH-6zBuhP/view?usp=sharing)
+### A* ML Demo  [![A* ML Demo](./resorce/videos/a*_ml.png)](https://drive.google.com/file/d/1jGSJrqjMciINH5OiUwlpMRe6pR6Z1EJd/view?usp=sharing)
 
 #  ROS2-Based Mobile Robot Navigation & Mapping System (Humble + PyBullet)
 
