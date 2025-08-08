@@ -1,5 +1,8 @@
 
-[![EKF SLAM Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1ke0XbPN9iWjfp6sSuiCP1XfcCbZm8_nX/view?usp=sharing) | [![MCL Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/mcl_thumbnail.png)](https://drive.google.com/file/d/1DZikycVrDv5St1zge4WKLWvAyWtqwO-R/view?usp=sharing) | [![A* ML Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/astar_ml_thumbnail.png)](https://drive.google.com/file/d/1jGSJrqjMciINH5OiUwlpMRe6pR6Z1EJd/view?usp=sharing)|[![A* Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/astar_ml_thumbnail.png)](https://drive.google.com/file/d/1gBN-PhuQQ6OgJll4vY_ddOACH-6zBuhP/view?usp=sharing
+### EKF SLAM Demo [![EKF SLAM Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1ke0XbPN9iWjfp6sSuiCP1XfcCbZm8_nX/view?usp=sharing) 
+### MCL Demo [![MCL Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1DZikycVrDv5St1zge4WKLWvAyWtqwO-R/view?usp=sharing) 
+### A* ML Demo  [![A* ML Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1jGSJrqjMciINH5OiUwlpMRe6pR6Z1EJd/view?usp=sharing)
+### A* Demo[![A* Demo](./resorce/videos/ekf_slam.png)](https://drive.google.com/file/d/1gBN-PhuQQ6OgJll4vY_ddOACH-6zBuhP/view?usp=sharing
 )
 
 
