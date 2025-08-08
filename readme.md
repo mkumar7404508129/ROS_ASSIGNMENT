@@ -1,5 +1,5 @@
 
-[![EKF SLAM Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/ekf_slam_thumbnail.png)](./resorce/videos/EKF_SLAM.mkv) | [![MCL Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/mcl_thumbnail.png)](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/mcl_demo.mkv) | [![A* ML Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/astar_ml_thumbnail.png)](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/astar_ml_demo.mkv) 
+[![EKF SLAM Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/ekf_slam_thumbnail.png)](./resorce/videos/EKF_SLAM.mp4) | [![MCL Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/mcl_thumbnail.png)](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/mcl_demo.mkv) | [![A* ML Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/astar_ml_thumbnail.png)](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/astar_ml_demo.mkv) 
 
 #  ROS2-Based Mobile Robot Navigation & Mapping System (Humble + PyBullet)
 
