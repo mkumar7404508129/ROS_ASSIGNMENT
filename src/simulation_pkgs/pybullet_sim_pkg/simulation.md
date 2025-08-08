@@ -10,4 +10,4 @@ The project includes two main nodes:
 
 Here is a simplified diagram of how the nodes and key topics interact:
 
-![Diagram description](../../simulation_pkgs/simulation_node.png)
+![Diagram description](../../../resorce/simulation/simulation_node.png)
