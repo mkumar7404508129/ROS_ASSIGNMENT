@@ -20,8 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'mcl_node = mcl_pkg.mcl_node:main',
-            'map_publisher = mcl_pkg.map_publisher_node:main'
+            'mcl_node = mcl_pkg.mcl_node:main'
         ],
     },
 )

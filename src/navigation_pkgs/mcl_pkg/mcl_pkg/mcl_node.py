@@ -17,11 +17,19 @@ from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import PoseStamped, PoseArray, TransformStamped, PoseWithCovarianceStamped, Pose
 from tf2_ros import TransformBroadcaster
 from rclpy.qos import QoSProfile, DurabilityPolicy
-
+import os
 class MCLNode(Node):
     def __init__(self):
         super().__init__('mcl_node')
         self.get_logger().info('Monte Carlo Localization Node has been started.')
+
+        import os
+
+        dir = 'mcl_output'
+
+        # Check if directory exists, if not create it
+        if not os.path.exists(dir):
+            os.makedirs(dir)
 
         # --- Parameters ---
         # --- FIX: Increased particle count to a reasonable number ---
@@ -74,8 +82,9 @@ class MCLNode(Node):
         self.get_logger().info("MCL node waiting for map...")
 
     def plot_callback(self):
+        
+        self.plot_particles_and_path(f'mcl_output/mcl_plot_{self.img_number}.png')
         self.img_number+=1
-        self.plot_particles_and_path(f'mcl_plot_{self.img_number}.png')
 
     def map_callback(self, msg):
         if self.map_received:
