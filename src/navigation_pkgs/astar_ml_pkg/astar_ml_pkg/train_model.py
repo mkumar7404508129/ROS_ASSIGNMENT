@@ -98,7 +98,7 @@ class FinalTrainerNode(Node):
         self.get_logger().info("--- Generating Training Data using Parallel Processing ---")
         
         free_cells = list(zip(*np.where(self.grid <= 50))) 
-        num_samples = 4000
+        num_samples = 3000
         tasks = [(self.grid, start, end) for start, end in [random.sample(free_cells, 2) for _ in range(num_samples)]]
 
         num_cores = cpu_count()
