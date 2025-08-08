@@ -46,7 +46,7 @@ This repository is organized into several ROS 2 packages, each with a specific r
 | **`pybullet_sim_pkg`** | Provides a flexible PyBullet-based simulation environment, publishing odometry, laser scans, and a static map.                           | [README](./src/simulation_pkgs/pybullet_sim_pkg/simulation.md)   |
 | **`EKF_SLAM_pkg`**      | Implements **EKF-based SLAM**, concurrently building a map of landmarks and estimating the robot's pose. Fully visualized in RViz2.          | [README](./src/navigation_pkgs/EKF_SLAM_pkg/ekf_slam.md)       |
 | **`mcl_pkg`**           | A highly optimized **Monte Carlo Localization (MCL)** node (particle filter) for robust robot pose estimation within a known map.            | [README](src/navigation_pkgs/mcl_pkg/mcl.md)            |
-| **`astar_pkg`**         | A robust implementation of the classic **A\* path planning algorithm** with a Pure Pursuit controller for path following.                    | [README](src/navigation_pkgs/astar_ml_pkg/astar_ml.md)          |
+| **`astar_pkg`**         | A robust implementation of the classic **A\* path planning algorithm** with a Pure Pursuit controller for path following.                    | [README](src/navigation_pkgs/astar_pkg/astar.md)          |
 | **`astar_ml_pkg`**      | An advanced package featuring a **Hybrid A\* planner** that uses a Machine Learning (GradientBoostingRegressor) model to create a superior heuristic, leading to faster and more efficient pathfinding. | [README](src/navigation_pkgs/astar_ml_pkg/astar_ml.md)       |
 
 
