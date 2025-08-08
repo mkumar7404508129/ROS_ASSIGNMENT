@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import heapq
 import math
-
+import os
 # --- A* Algorithm Implementation (Unchanged) ---
 class AStarNode:
     def __init__(self, parent=None, position=None):
@@ -270,7 +270,13 @@ class AStarPlannerAndControllerNode(Node):
         ax.plot(end_w[0], end_w[1], 'ro', markersize=12, label='Goal', markeredgecolor='k')
         ax.legend()
         ax.grid(True)
-        file_name = "path_plan.png"
+
+        dir = 'astar_output'
+
+        # Check if directory exists, if not create it
+        if not os.path.exists(dir):
+            os.makedirs(dir)
+        file_name = f"{dir}/astar_path_plan.png"
         plt.savefig(file_name)
         plt.close(fig)
         self.get_logger().info(f"Plot saved to '{file_name}'")

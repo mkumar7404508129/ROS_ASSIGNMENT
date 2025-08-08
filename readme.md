@@ -1,3 +1,6 @@
+
+[![EKF SLAM Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/ekf_slam_thumbnail.png)](./resorce/videos/EKF_SLAM.mkv) | [![MCL Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/mcl_thumbnail.png)](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/mcl_demo.mkv) | [![A* ML Demo](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/astar_ml_thumbnail.png)](https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/media/astar_ml_demo.mkv) 
+
 #  ROS2-Based Mobile Robot Navigation & Mapping System (Humble + PyBullet)
 
 This repository contains a modular robotics framework using **ROS 2 Humble**, with simulation in **PyBullet**, and visualizations via **RViz2**. It supports:
